@@ -54,7 +54,7 @@ export default function Chart() {
         secondsVisible: false,
       },
       localization: {
-        timeFormatter: (time: any) => {
+        timeFormatter: (time: number) => {
           const date = new Date(time * 1000);
           return date.toLocaleString("es-MX", {
             month: "short",
@@ -68,8 +68,15 @@ export default function Chart() {
 
     const candles = chart.addSeries(CandlestickSeries);
 
-    const ema3 = chart.addSeries(LineSeries, { color: "#166534", lineWidth: 2 });
-    const ema9 = chart.addSeries(LineSeries, { color: "#ef4444", lineWidth: 2 });
+    const ema3 = chart.addSeries(LineSeries, {
+      color: "#166534",
+      lineWidth: 2,
+    });
+
+    const ema9 = chart.addSeries(LineSeries, {
+      color: "#ef4444",
+      lineWidth: 2,
+    });
 
     const ema20 = chart.addSeries(LineSeries, {
       color: "#166534",
@@ -89,7 +96,7 @@ export default function Chart() {
 
     const ema200 = chart.addSeries(LineSeries, {
       color: "#facc15",
-      lineWidth: 6,
+      lineWidth: 4,
     });
 
     const ema200Green = chart.addSeries(LineSeries, {
@@ -116,6 +123,7 @@ export default function Chart() {
 
     const sarGreen = chart.addSeries(LineSeries, {
       color: "#22c55e",
+      lineWidth: 1,
       lineVisible: false,
       pointMarkersVisible: true,
       pointMarkersRadius: 4,
@@ -123,6 +131,7 @@ export default function Chart() {
 
     const sarRed = chart.addSeries(LineSeries, {
       color: "#ef4444",
+      lineWidth: 1,
       lineVisible: false,
       pointMarkersVisible: true,
       pointMarkersRadius: 4,
@@ -132,9 +141,6 @@ export default function Chart() {
       const data = await getCandlesByTimeframe(timeframe.minutes);
 
       candles.setData(data as any);
-
-     // const markers = findEmaCrossMarkers(data);
-     // candles.setMarkers(markers as any);
 
       ema3.setData(calculateEMA(data, 3) as any);
       ema9.setData(calculateEMA(data, 9) as any);
@@ -154,6 +160,7 @@ export default function Chart() {
       sarRed.setData(sar.filter((p) => p.trend === "down") as any);
 
       const total = data.length;
+
       chart.timeScale().setVisibleLogicalRange({
         from: Math.max(total - 20, 0),
         to: total,
@@ -351,43 +358,4 @@ function calculateParabolicSAR(data: Candle[]) {
   }
 
   return result;
-}
-
-function findEmaCrossMarkers(data: Candle[]) {
-  const fast = calculateEMA(data, 3);
-  const slow = calculateEMA(data, 9);
-
-  const markers = [];
-
-  for (let i = 1; i < data.length; i++) {
-    const prevFast = fast[i - 1].value;
-    const prevSlow = slow[i - 1].value;
-    const currFast = fast[i].value;
-    const currSlow = slow[i].value;
-
-    const bullishCross = prevFast <= prevSlow && currFast > currSlow;
-    const bearishCross = prevFast >= prevSlow && currFast < currSlow;
-
-    if (bullishCross) {
-      markers.push({
-        time: data[i].time,
-        position: "belowBar",
-        color: "#22c55e",
-        shape: "arrowUp",
-        text: "EMA 3/9",
-      });
-    }
-
-    if (bearishCross) {
-      markers.push({
-        time: data[i].time,
-        position: "aboveBar",
-        color: "#ef4444",
-        shape: "arrowDown",
-        text: "EMA 3/9",
-      });
-    }
-  }
-
-  return markers;
 }
