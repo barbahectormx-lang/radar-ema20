@@ -1,5 +1,6 @@
 "use client";
 
+import Chart from "./Chart";
 import { useEffect, useState } from "react";
 
 const assets = ["BTC-USD", "BTCUSDT", "NVDA"];
@@ -66,6 +67,7 @@ export default function Home() {
       <div className="max-w-6xl mx-auto space-y-6">
         <header className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
           <h1 className="text-3xl font-bold">Radar Técnico Comunitario</h1>
+          <Chart />
           <p className="text-slate-400 mt-2">
             Coinbase BTC-USD · BTCUSDT · NVDA | EMA 20 + indicadores + calculadora
           </p>
