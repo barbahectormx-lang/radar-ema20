@@ -1,17 +1,59 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-const assets = ["BTCUSDT", "BTCUSD", "NVDA"];
+const assets = ["BTC-USD", "BTCUSDT", "NVDA"];
 
 export default function Home() {
-  const [asset, setAsset] = useState("BTCUSDT");
+  const [asset, setAsset] = useState("BTC-USD");
+  const [livePrice, setLivePrice] = useState<number | null>(null);
+  const [status, setStatus] = useState("Conectando...");
   const [direction, setDirection] = useState("LONG");
   const [capital, setCapital] = useState(1000);
   const [risk, setRisk] = useState(1);
   const [entry, setEntry] = useState(65000);
   const [stop, setStop] = useState(64500);
   const [target, setTarget] = useState(66000);
+
+  useEffect(() => {
+    if (asset !== "BTC-USD") {
+      setStatus("Activo manual por ahora");
+      return;
+    }
+
+    const ws = new WebSocket("wss://ws-feed.exchange.coinbase.com");
+
+    ws.onopen = () => {
+      setStatus("Conectado a Coinbase");
+      ws.send(
+        JSON.stringify({
+          type: "subscribe",
+          product_ids: ["BTC-USD"],
+          channels: ["ticker", "heartbeats"],
+        })
+      );
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === "ticker" && data.price) {
+        const price = Number(data.price);
+        setLivePrice(price);
+        setEntry(price);
+      }
+    };
+
+    ws.onerror = () => {
+      setStatus("Error de conexión");
+    };
+
+    ws.onclose = () => {
+      setStatus("Conexión cerrada");
+    };
+
+    return () => ws.close();
+  }, [asset]);
 
   const riskMoney = capital * (risk / 100);
   const riskPerUnit = Math.abs(entry - stop);
@@ -25,7 +67,7 @@ export default function Home() {
         <header className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
           <h1 className="text-3xl font-bold">Radar Técnico Comunitario</h1>
           <p className="text-slate-400 mt-2">
-            BTCUSDT · BTCUSD · NVDA | EMA 20 + indicadores + calculadora de riesgo
+            Coinbase BTC-USD · BTCUSDT · NVDA | EMA 20 + indicadores + calculadora
           </p>
         </header>
 
@@ -48,12 +90,19 @@ export default function Home() {
           ))}
         </section>
 
+        <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <div className="text-sm text-slate-400">Precio en vivo</div>
+          <div className="text-4xl font-black text-cyan-300 mt-2">
+            {livePrice ? `$${livePrice.toFixed(2)}` : "Esperando precio..."}
+          </div>
+          <div className="text-sm text-slate-500 mt-2">{status}</div>
+        </section>
+
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
             <h2 className="text-xl font-bold">Calculadora de operación</h2>
 
-            <label className="block">
-              <span className="text-sm text-slate-400">Dirección</span>
+            <Field label="Dirección">
               <select
                 value={direction}
                 onChange={(e) => setDirection(e.target.value)}
@@ -62,82 +111,94 @@ export default function Home() {
                 <option>LONG</option>
                 <option>SHORT</option>
               </select>
-            </label>
+            </Field>
 
-            <label className="block">
-              <span className="text-sm text-slate-400">Capital</span>
+            <Field label="Capital">
               <input
                 type="number"
                 value={capital}
                 onChange={(e) => setCapital(Number(e.target.value))}
                 className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-lg p-3"
               />
-            </label>
+            </Field>
 
-            <label className="block">
-              <span className="text-sm text-slate-400">Riesgo %</span>
+            <Field label="Riesgo %">
               <input
                 type="number"
                 value={risk}
                 onChange={(e) => setRisk(Number(e.target.value))}
                 className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-lg p-3"
               />
-            </label>
+            </Field>
 
-            <label className="block">
-              <span className="text-sm text-slate-400">Entrada</span>
+            <Field label="Entrada">
               <input
                 type="number"
                 value={entry}
                 onChange={(e) => setEntry(Number(e.target.value))}
                 className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-lg p-3"
               />
-            </label>
+            </Field>
 
-            <label className="block">
-              <span className="text-sm text-slate-400">Stop</span>
+            <Field label="Stop">
               <input
                 type="number"
                 value={stop}
                 onChange={(e) => setStop(Number(e.target.value))}
                 className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-lg p-3"
               />
-            </label>
+            </Field>
 
-            <label className="block">
-              <span className="text-sm text-slate-400">Target</span>
+            <Field label="Target">
               <input
                 type="number"
                 value={target}
                 onChange={(e) => setTarget(Number(e.target.value))}
                 className="w-full mt-1 bg-slate-950 border border-slate-700 rounded-lg p-3"
               />
-            </label>
+            </Field>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
             <h2 className="text-xl font-bold">Resultado</h2>
 
-            <div className="grid grid-cols-1 gap-3">
-              <Result label="Activo" value={asset} />
-              <Result label="Dirección" value={direction} />
-              <Result label="Riesgo en dinero" value={`$${riskMoney.toFixed(2)}`} />
-              <Result label="Riesgo por unidad" value={`$${riskPerUnit.toFixed(2)}`} />
-              <Result label="Tamaño sugerido" value={suggestedSize.toFixed(asset === "NVDA" ? 0 : 6)} />
-              <Result label="Relación R:R" value={`${rr.toFixed(2)}R`} />
-            </div>
+            <Result label="Activo" value={asset} />
+            <Result label="Dirección" value={direction} />
+            <Result label="Riesgo en dinero" value={`$${riskMoney.toFixed(2)}`} />
+            <Result label="Riesgo por unidad" value={`$${riskPerUnit.toFixed(2)}`} />
+            <Result
+              label="Tamaño sugerido"
+              value={suggestedSize.toFixed(asset === "NVDA" ? 0 : 6)}
+            />
+            <Result label="Relación R:R" value={`${rr.toFixed(2)}R`} />
 
             <div className="mt-6 bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-4">
               <h3 className="font-bold text-cyan-300">Lectura del sistema</h3>
               <p className="text-sm text-slate-300 mt-2">
-                Usa EMA 20 como eje principal. Confirma con EMA 3/9, EMA 50/200,
-                MACD, volumen, Bandas de Bollinger y Parabolic SAR antes de entrar.
+                Coinbase ya alimenta BTC-USD en vivo. El siguiente paso será
+                construir velas, calcular EMA 20 y después integrar MACD,
+                Bollinger, volumen y Parabolic SAR.
               </p>
             </div>
           </div>
         </section>
       </div>
     </main>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm text-slate-400">{label}</span>
+      {children}
+    </label>
   );
 }
 
