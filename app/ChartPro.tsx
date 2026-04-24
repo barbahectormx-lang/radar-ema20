@@ -21,6 +21,22 @@ type Candle = {
   volume?: number;
 };
 
+export type EngineSignal = {
+  price: number;
+  signal: "LONG" | "SHORT" | "NO_OPERAR";
+  reason: string;
+  ema20: boolean;
+  emaCross: boolean;
+  ema200: boolean;
+  sar: boolean;
+  bollinger: boolean;
+  macd: boolean;
+  volume: boolean;
+  range: boolean;
+  trend: "ALCISTA" | "BAJISTA" | "RANGO";
+  stop: number;
+};
+
 const timeframes = [
   { label: "1m", value: "1m" },
   { label: "3m", value: "3m" },
@@ -36,9 +52,11 @@ const timeframes = [
 export default function ChartPro({
   asset,
   onPrice,
+  onSignal,
 }: {
   asset: Asset;
   onPrice?: (price: number) => void;
+  onSignal?: (signal: EngineSignal) => void;
 }) {
   const chartRef = useRef<HTMLDivElement | null>(null);
   const macdRef = useRef<HTMLDivElement | null>(null);
@@ -53,6 +71,21 @@ export default function ChartPro({
     macdRef.current.innerHTML = "";
 
     if (asset === "NVDA") {
+      onSignal?.({
+        price: 0,
+        signal: "NO_OPERAR",
+        reason: "NVDA requiere API de acciones para motor automático propio.",
+        ema20: false,
+        emaCross: false,
+        ema200: false,
+        sar: false,
+        bollinger: false,
+        macd: false,
+        volume: false,
+        range: true,
+        trend: "RANGO",
+        stop: 0,
+      });
       return;
     }
 
@@ -94,59 +127,59 @@ export default function ChartPro({
 
     const candles = chart.addSeries(CandlestickSeries);
 
-    const volume = chart.addSeries(HistogramSeries, {
+    const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "",
     } as any);
 
-    const ema3 = chart.addSeries(LineSeries, {
+    const ema3Series = chart.addSeries(LineSeries, {
       color: "#166534",
       lineWidth: 2,
     });
 
-    const ema9 = chart.addSeries(LineSeries, {
+    const ema9Series = chart.addSeries(LineSeries, {
       color: "#ef4444",
       lineWidth: 2,
     });
 
-    const ema20 = chart.addSeries(LineSeries, {
+    const ema20Series = chart.addSeries(LineSeries, {
       color: "#166534",
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
     });
 
-    const ema50 = chart.addSeries(LineSeries, {
+    const ema50Series = chart.addSeries(LineSeries, {
       color: "#ef4444",
       lineWidth: 4,
     });
 
-    const ema50Black = chart.addSeries(LineSeries, {
+    const ema50BlackSeries = chart.addSeries(LineSeries, {
       color: "#000000",
       lineWidth: 2,
     });
 
-    const ema200 = chart.addSeries(LineSeries, {
+    const ema200Series = chart.addSeries(LineSeries, {
       color: "#facc15",
       lineWidth: 4,
     });
 
-    const ema200Green = chart.addSeries(LineSeries, {
+    const ema200GreenSeries = chart.addSeries(LineSeries, {
       color: "#166534",
       lineWidth: 2,
     });
 
-    const bbUpper = chart.addSeries(LineSeries, {
+    const bbUpperSeries = chart.addSeries(LineSeries, {
       color: "#38bdf8",
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
     });
 
-    const bbMiddle = chart.addSeries(LineSeries, {
+    const bbMiddleSeries = chart.addSeries(LineSeries, {
       color: "#94a3b8",
       lineWidth: 1,
     });
 
-    const bbLower = chart.addSeries(LineSeries, {
+    const bbLowerSeries = chart.addSeries(LineSeries, {
       color: "#38bdf8",
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
@@ -192,9 +225,21 @@ export default function ChartPro({
         const last = data[data.length - 1];
         onPrice?.(last.close);
 
+        const ema3 = ema(data, 3);
+        const ema9 = ema(data, 9);
+        const ema20 = ema(data, 20);
+        const ema50 = ema(data, 50);
+        const ema200 = ema(data, 200);
+        const bb = bollinger(data, 20);
+        const sarData = parabolicSAR(data);
+        const macd = calculateMACD(data);
+        const signal = analyzeEngine(data, ema3, ema9, ema20, ema200, bb, sarData, macd);
+
+        onSignal?.(signal);
+
         candles.setData(data as any);
 
-        volume.setData(
+        volumeSeries.setData(
           data.map((c) => ({
             time: c.time,
             value: c.volume || 0,
@@ -202,24 +247,21 @@ export default function ChartPro({
           })) as any
         );
 
-        ema3.setData(ema(data, 3) as any);
-        ema9.setData(ema(data, 9) as any);
-        ema20.setData(ema(data, 20) as any);
-        ema50.setData(ema(data, 50) as any);
-        ema50Black.setData(ema(data, 50) as any);
-        ema200.setData(ema(data, 200) as any);
-        ema200Green.setData(ema(data, 200) as any);
+        ema3Series.setData(ema3 as any);
+        ema9Series.setData(ema9 as any);
+        ema20Series.setData(ema20 as any);
+        ema50Series.setData(ema50 as any);
+        ema50BlackSeries.setData(ema50 as any);
+        ema200Series.setData(ema200 as any);
+        ema200GreenSeries.setData(ema200 as any);
 
-        const bb = bollinger(data, 20);
-        bbUpper.setData(bb.upper as any);
-        bbMiddle.setData(bb.middle as any);
-        bbLower.setData(bb.lower as any);
+        bbUpperSeries.setData(bb.upper as any);
+        bbMiddleSeries.setData(bb.middle as any);
+        bbLowerSeries.setData(bb.lower as any);
 
-        const sar = parabolicSAR(data);
-        sarGreen.setData(sar.filter((p) => p.trend === "up") as any);
-        sarRed.setData(sar.filter((p) => p.trend === "down") as any);
+        sarGreen.setData(sarData.filter((p) => p.trend === "up") as any);
+        sarRed.setData(sarData.filter((p) => p.trend === "down") as any);
 
-        const macd = calculateMACD(data);
         macdLine.setData(macd.macd as any);
         macdSignal.setData(macd.signal as any);
         macdHist.setData(macd.histogram as any);
@@ -234,7 +276,7 @@ export default function ChartPro({
           to: data.length,
         });
       } catch (error) {
-        console.error("Error cargando gráfica:", error);
+        console.error("Error cargando motor:", error);
       }
     }
 
@@ -252,7 +294,7 @@ export default function ChartPro({
   if (asset === "NVDA") {
     return (
       <div className="bg-black border border-slate-700 rounded-xl p-6 text-slate-300">
-        NVDA requiere API de acciones para gráfica propia. Por ahora usa el módulo de calculadora y noticias.
+        NVDA requiere API de acciones para gráfica propia. Por ahora usa calculadora y noticias.
       </div>
     );
   }
@@ -469,4 +511,146 @@ function calculateMACD(data: Candle[]) {
   }));
 
   return { macd, signal, histogram };
+}
+
+function analyzeEngine(
+  data: Candle[],
+  ema3: { time: number; value: number }[],
+  ema9: { time: number; value: number }[],
+  ema20: { time: number; value: number }[],
+  ema200: { time: number; value: number }[],
+  bb: {
+    upper: { time: number; value: number }[];
+    middle: { time: number; value: number }[];
+    lower: { time: number; value: number }[];
+  },
+  sarData: { time: number; value: number; trend: "up" | "down" }[],
+  macd: {
+    macd: { time: number; value: number }[];
+    signal: { time: number; value: number }[];
+    histogram: { time: number; value: number; color: string }[];
+  }
+): EngineSignal {
+  const i = data.length - 1;
+  const prev = i - 1;
+
+  const last = data[i];
+
+  const bullishCross =
+    ema3[prev]?.value <= ema9[prev]?.value && ema3[i]?.value > ema9[i]?.value;
+
+  const bearishCross =
+    ema3[prev]?.value >= ema9[prev]?.value && ema3[i]?.value < ema9[i]?.value;
+
+  const priceAbove20 = last.close > ema20[i]?.value;
+  const priceBelow20 = last.close < ema20[i]?.value;
+  const priceAbove200 = last.close > ema200[i]?.value;
+
+  const sarLast = sarData[sarData.length - 1];
+  const sarBull = sarLast?.trend === "up";
+  const sarBear = sarLast?.trend === "down";
+
+  const macdBull =
+    macd.macd[i]?.value > macd.signal[i]?.value &&
+    macd.histogram[i]?.value > macd.histogram[prev]?.value;
+
+  const macdBear =
+    macd.macd[i]?.value < macd.signal[i]?.value &&
+    macd.histogram[i]?.value < macd.histogram[prev]?.value;
+
+  const last20 = data.slice(-20);
+  const avgVolume =
+    last20.reduce((sum, c) => sum + (c.volume || 0), 0) / Math.max(last20.length, 1);
+
+  const volumeStrong = (last.volume || 0) > avgVolume;
+
+  const bbMid = bb.middle[bb.middle.length - 1]?.value;
+  const bbUpper = bb.upper[bb.upper.length - 1]?.value;
+  const bbLower = bb.lower[bb.lower.length - 1]?.value;
+
+  const bollingerBull = last.close > bbMid && last.close < bbUpper;
+  const bollingerBear = last.close < bbMid && last.close > bbLower;
+
+  const recentHigh = Math.max(...last20.map((c) => c.high));
+  const recentLow = Math.min(...last20.map((c) => c.low));
+  const rangePercent = (recentHigh - recentLow) / last.close;
+  const isRange = rangePercent < 0.003;
+
+  const trend =
+    isRange ? "RANGO" : priceAbove20 && priceAbove200 ? "ALCISTA" : "BAJISTA";
+
+  const longScore = [
+    priceAbove20,
+    priceAbove200,
+    bullishCross,
+    sarBull,
+    macdBull,
+    volumeStrong,
+    bollingerBull,
+    !isRange,
+  ].filter(Boolean).length;
+
+  const shortScore = [
+    priceBelow20,
+    bearishCross,
+    sarBear,
+    macdBear,
+    volumeStrong,
+    bollingerBear,
+    !isRange,
+  ].filter(Boolean).length;
+
+  if (longScore >= 6) {
+    return {
+      price: last.close,
+      signal: "LONG",
+      reason: "LONG: EMA20/EMA200 a favor, cruce o momentum alcista, SAR/MACD/volumen acompañan.",
+      ema20: priceAbove20,
+      emaCross: bullishCross,
+      ema200: priceAbove200,
+      sar: sarBull,
+      bollinger: bollingerBull,
+      macd: macdBull,
+      volume: volumeStrong,
+      range: isRange,
+      trend,
+      stop: Math.min(ema20[i]?.value || last.low, sarLast?.value || last.low),
+    };
+  }
+
+  if (shortScore >= 5) {
+    return {
+      price: last.close,
+      signal: "SHORT",
+      reason: "SHORT: precio bajo EMA20, presión bajista, SAR/MACD/volumen acompañan.",
+      ema20: priceBelow20,
+      emaCross: bearishCross,
+      ema200: priceAbove200,
+      sar: sarBear,
+      bollinger: bollingerBear,
+      macd: macdBear,
+      volume: volumeStrong,
+      range: isRange,
+      trend,
+      stop: Math.max(ema20[i]?.value || last.high, sarLast?.value || last.high),
+    };
+  }
+
+  return {
+    price: last.close,
+    signal: "NO_OPERAR",
+    reason: isRange
+      ? "NO OPERAR: precio en rango lateral / EMAs sin tendencia clara."
+      : "ESPERAR: faltan confirmaciones suficientes.",
+    ema20: priceAbove20 || priceBelow20,
+    emaCross: bullishCross || bearishCross,
+    ema200: priceAbove200,
+    sar: sarBull || sarBear,
+    bollinger: bollingerBull || bollingerBear,
+    macd: macdBull || macdBear,
+    volume: volumeStrong,
+    range: isRange,
+    trend,
+    stop: last.close,
+  };
 }
