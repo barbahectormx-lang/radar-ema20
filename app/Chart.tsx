@@ -17,6 +17,14 @@ type Candle = {
   close: number;
 };
 
+type Signal = {
+  type: "LONG" | "SHORT" | "SIN SEÑAL";
+  message: string;
+  candleCount: number;
+  entryPrice?: number;
+  exitRule?: string;
+};
+
 const timeframes = [
   { label: "1m", minutes: 1 },
   { label: "3m", minutes: 3 },
@@ -32,6 +40,11 @@ const timeframes = [
 export default function Chart() {
   const chartRef = useRef<HTMLDivElement | null>(null);
   const [timeframe, setTimeframe] = useState(timeframes[1]);
+  const [signal, setSignal] = useState<Signal>({
+    type: "SIN SEÑAL",
+    message: "Esperando cruce confirmado.",
+    candleCount: 0,
+  });
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -142,22 +155,37 @@ export default function Chart() {
 
       candles.setData(data as any);
 
-      ema3.setData(calculateEMA(data, 3) as any);
-      ema9.setData(calculateEMA(data, 9) as any);
-      ema20.setData(calculateEMA(data, 20) as any);
-      ema50.setData(calculateEMA(data, 50) as any);
-      ema50Black.setData(calculateEMA(data, 50) as any);
-      ema200.setData(calculateEMA(data, 200) as any);
-      ema200Green.setData(calculateEMA(data, 200) as any);
+      const ema3Data = calculateEMA(data, 3);
+      const ema9Data = calculateEMA(data, 9);
+      const ema20Data = calculateEMA(data, 20);
+      const ema50Data = calculateEMA(data, 50);
+      const ema200Data = calculateEMA(data, 200);
+      const sarData = calculateParabolicSAR(data);
+
+      ema3.setData(ema3Data as any);
+      ema9.setData(ema9Data as any);
+      ema20.setData(ema20Data as any);
+      ema50.setData(ema50Data as any);
+      ema50Black.setData(ema50Data as any);
+      ema200.setData(ema200Data as any);
+      ema200Green.setData(ema200Data as any);
 
       const bb = calculateBollinger(data, 20, 2);
       bbUpper.setData(bb.upper as any);
       bbMiddle.setData(bb.middle as any);
       bbLower.setData(bb.lower as any);
 
-      const sar = calculateParabolicSAR(data);
-      sarGreen.setData(sar.filter((p) => p.trend === "up") as any);
-      sarRed.setData(sar.filter((p) => p.trend === "down") as any);
+      sarGreen.setData(sarData.filter((p) => p.trend === "up") as any);
+      sarRed.setData(sarData.filter((p) => p.trend === "down") as any);
+
+      const newSignal = calculateSignal(data, ema3Data, ema9Data, ema20Data, sarData);
+      setSignal(newSignal);
+
+      window.dispatchEvent(
+        new CustomEvent("radar-signal", {
+          detail: newSignal,
+        })
+      );
 
       const total = data.length;
 
@@ -177,8 +205,38 @@ export default function Chart() {
     };
   }, [timeframe]);
 
+  const signalStyle =
+    signal.type === "LONG"
+      ? "bg-emerald-500/15 border-emerald-400 text-emerald-200"
+      : signal.type === "SHORT"
+      ? "bg-rose-500/15 border-rose-400 text-rose-200"
+      : "bg-slate-800 border-slate-600 text-slate-300";
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <div className={`rounded-xl border p-4 ${signalStyle}`}>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+          <div>
+            <div className="text-sm opacity-80">Señal confirmada por cierre de vela</div>
+            <div className="text-2xl font-black">{signal.type}</div>
+          </div>
+
+          <div className="text-sm md:text-right">
+            <div>{signal.message}</div>
+            <div className="font-bold">
+              Vela: {signal.candleCount > 0 ? signal.candleCount : "-"} / 3
+            </div>
+          </div>
+        </div>
+
+        {signal.entryPrice && (
+          <div className="mt-3 text-sm">
+            Entrada estimada: <strong>${signal.entryPrice.toFixed(2)}</strong> ·{" "}
+            {signal.exitRule}
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {timeframes.map((tf) => (
           <button
@@ -358,4 +416,73 @@ function calculateParabolicSAR(data: Candle[]) {
   }
 
   return result;
+}
+
+function calculateSignal(
+  data: Candle[],
+  ema3: { time: number; value: number }[],
+  ema9: { time: number; value: number }[],
+  ema20: { time: number; value: number }[],
+  sar: { time: number; value: number; trend: "up" | "down" }[]
+): Signal {
+  if (data.length < 30 || sar.length < 5) {
+    return {
+      type: "SIN SEÑAL",
+      message: "Datos insuficientes para confirmar cruce.",
+      candleCount: 0,
+    };
+  }
+
+  for (let i = data.length - 1; i >= Math.max(data.length - 4, 1); i--) {
+    const prevFast = ema3[i - 1].value;
+    const prevSlow = ema9[i - 1].value;
+    const currFast = ema3[i].value;
+    const currSlow = ema9[i].value;
+    const currClose = data[i].close;
+    const currEma20 = ema20[i].value;
+    const sarPoint = sar.find((s) => s.time === data[i].time);
+
+    if (!sarPoint) continue;
+
+    const bullishCross = prevFast <= prevSlow && currFast > currSlow;
+    const bearishCross = prevFast >= prevSlow && currFast < currSlow;
+
+    const candleCount = data.length - i;
+
+    if (
+      bullishCross &&
+      currClose > currEma20 &&
+      sarPoint.trend === "up" &&
+      candleCount <= 3
+    ) {
+      return {
+        type: "LONG",
+        message: "Cruce EMA 3/9 alcista confirmado con cierre sobre EMA 20 y SAR positivo.",
+        candleCount,
+        entryPrice: currClose,
+        exitRule: "Evaluar salida máximo en la vela 3.",
+      };
+    }
+
+    if (
+      bearishCross &&
+      currClose < currEma20 &&
+      sarPoint.trend === "down" &&
+      candleCount <= 3
+    ) {
+      return {
+        type: "SHORT",
+        message: "Cruce EMA 3/9 bajista confirmado con cierre bajo EMA 20 y SAR negativo.",
+        candleCount,
+        entryPrice: currClose,
+        exitRule: "Evaluar salida máximo en la vela 3.",
+      };
+    }
+  }
+
+  return {
+    type: "SIN SEÑAL",
+    message: "No hay cruce EMA 3/9 confirmado dentro de las últimas 3 velas.",
+    candleCount: 0,
+  };
 }
