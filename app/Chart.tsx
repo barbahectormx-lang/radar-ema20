@@ -17,34 +17,9 @@ type Candle = {
   close: number;
 };
 
-type Signal = {
-  type: "LONG" | "SHORT" | "SIN SEÑAL";
-  message: string;
-  candleCount: number;
-  entryPrice?: number;
-  exitRule?: string;
-};
-
-const timeframes = [
-  { label: "1m", minutes: 1 },
-  { label: "3m", minutes: 3 },
-  { label: "5m", minutes: 5 },
-  { label: "10m", minutes: 10 },
-  { label: "13m", minutes: 13 },
-  { label: "15m", minutes: 15 },
-  { label: "1H", minutes: 60 },
-  { label: "1D", minutes: 1440 },
-  { label: "1M", minutes: 43200 },
-];
-
 export default function Chart() {
   const chartRef = useRef<HTMLDivElement | null>(null);
-  const [timeframe, setTimeframe] = useState(timeframes[1]);
-  const [signal, setSignal] = useState<Signal>({
-    type: "SIN SEÑAL",
-    message: "Esperando cruce confirmado.",
-    candleCount: 0,
-  });
+  const [signal, setSignal] = useState<any>(null);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -56,7 +31,7 @@ export default function Chart() {
       height: 500,
       layout: {
         background: { type: ColorType.Solid, color: "#020617" },
-        textColor: "#ffffff",
+        textColor: "#fff",
       },
       grid: {
         vertLines: { color: "#1e293b" },
@@ -64,425 +39,123 @@ export default function Chart() {
       },
       timeScale: {
         timeVisible: true,
-        secondsVisible: false,
-      },
-      localization: {
-        timeFormatter: (time: number) => {
-          const date = new Date(time * 1000);
-          return date.toLocaleString("es-MX", {
-            month: "short",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-        },
       },
     });
 
     const candles = chart.addSeries(CandlestickSeries);
 
-    const ema3 = chart.addSeries(LineSeries, {
-      color: "#166534",
-      lineWidth: 2,
-    });
-
-    const ema9 = chart.addSeries(LineSeries, {
-      color: "#ef4444",
-      lineWidth: 2,
-    });
-
+    const ema3 = chart.addSeries(LineSeries, { color: "#166534", lineWidth: 2 });
+    const ema9 = chart.addSeries(LineSeries, { color: "#ef4444", lineWidth: 2 });
     const ema20 = chart.addSeries(LineSeries, {
       color: "#166534",
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
     });
 
-    const ema50 = chart.addSeries(LineSeries, {
-      color: "#ef4444",
-      lineWidth: 4,
-    });
+    async function load() {
+      const data = await fetchCandles();
 
-    const ema50Black = chart.addSeries(LineSeries, {
-      color: "#000000",
-      lineWidth: 2,
-    });
-
-    const ema200 = chart.addSeries(LineSeries, {
-      color: "#facc15",
-      lineWidth: 4,
-    });
-
-    const ema200Green = chart.addSeries(LineSeries, {
-      color: "#166534",
-      lineWidth: 2,
-    });
-
-    const bbUpper = chart.addSeries(LineSeries, {
-      color: "#38bdf8",
-      lineWidth: 1,
-      lineStyle: LineStyle.Dashed,
-    });
-
-    const bbMiddle = chart.addSeries(LineSeries, {
-      color: "#94a3b8",
-      lineWidth: 1,
-    });
-
-    const bbLower = chart.addSeries(LineSeries, {
-      color: "#38bdf8",
-      lineWidth: 1,
-      lineStyle: LineStyle.Dashed,
-    });
-
-    const sarGreen = chart.addSeries(LineSeries, {
-      color: "#22c55e",
-      lineWidth: 1,
-      lineVisible: false,
-      pointMarkersVisible: true,
-      pointMarkersRadius: 4,
-    } as any);
-
-    const sarRed = chart.addSeries(LineSeries, {
-      color: "#ef4444",
-      lineWidth: 1,
-      lineVisible: false,
-      pointMarkersVisible: true,
-      pointMarkersRadius: 4,
-    } as any);
-
-    async function loadCandles() {
-      const data = await getCandlesByTimeframe(timeframe.minutes);
-
-      candles.setData(data as any);
+      candles.setData(data);
 
       const ema3Data = calculateEMA(data, 3);
       const ema9Data = calculateEMA(data, 9);
       const ema20Data = calculateEMA(data, 20);
-      const ema50Data = calculateEMA(data, 50);
-      const ema200Data = calculateEMA(data, 200);
-      const sarData = calculateParabolicSAR(data);
 
-      ema3.setData(ema3Data as any);
-      ema9.setData(ema9Data as any);
-      ema20.setData(ema20Data as any);
-      ema50.setData(ema50Data as any);
-      ema50Black.setData(ema50Data as any);
-      ema200.setData(ema200Data as any);
-      ema200Green.setData(ema200Data as any);
+      ema3.setData(ema3Data);
+      ema9.setData(ema9Data);
+      ema20.setData(ema20Data);
 
-      const bb = calculateBollinger(data, 20, 2);
-      bbUpper.setData(bb.upper as any);
-      bbMiddle.setData(bb.middle as any);
-      bbLower.setData(bb.lower as any);
+      const newSignal = calculateSignal(data, ema3Data, ema9Data, ema20Data);
 
-      sarGreen.setData(sarData.filter((p) => p.trend === "up") as any);
-      sarRed.setData(sarData.filter((p) => p.trend === "down") as any);
+      const last = data[data.length - 1];
 
-      const newSignal = calculateSignal(data, ema3Data, ema9Data, ema20Data, sarData);
-      setSignal(newSignal);
+      let stop = 0;
+
+      if (newSignal.type === "LONG") {
+        stop = last.low;
+      }
+
+      if (newSignal.type === "SHORT") {
+        stop = last.high;
+      }
+
+      const finalSignal = {
+        ...newSignal,
+        stop,
+        entryPrice: last.close,
+      };
+
+      setSignal(finalSignal);
 
       window.dispatchEvent(
         new CustomEvent("radar-signal", {
-          detail: newSignal,
+          detail: finalSignal,
         })
       );
 
-      const total = data.length;
-
       chart.timeScale().setVisibleLogicalRange({
-        from: Math.max(total - 20, 0),
-        to: total,
+        from: data.length - 20,
+        to: data.length,
       });
     }
 
-    loadCandles();
+    load();
 
-    const interval = setInterval(loadCandles, 60000);
+    return () => chart.remove();
+  }, []);
 
-    return () => {
-      clearInterval(interval);
-      chart.remove();
-    };
-  }, [timeframe]);
+  return <div ref={chartRef} className="w-full" />;
+}
 
-  const signalStyle =
-    signal.type === "LONG"
-      ? "bg-emerald-500/15 border-emerald-400 text-emerald-200"
-      : signal.type === "SHORT"
-      ? "bg-rose-500/15 border-rose-400 text-rose-200"
-      : "bg-slate-800 border-slate-600 text-slate-300";
-
-  return (
-    <div className="space-y-4">
-      <div className={`rounded-xl border p-4 ${signalStyle}`}>
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-          <div>
-            <div className="text-sm opacity-80">Señal confirmada por cierre de vela</div>
-            <div className="text-2xl font-black">{signal.type}</div>
-          </div>
-
-          <div className="text-sm md:text-right">
-            <div>{signal.message}</div>
-            <div className="font-bold">
-              Vela: {signal.candleCount > 0 ? signal.candleCount : "-"} / 3
-            </div>
-          </div>
-        </div>
-
-        {signal.entryPrice && (
-          <div className="mt-3 text-sm">
-            Entrada estimada: <strong>${signal.entryPrice.toFixed(2)}</strong> ·{" "}
-            {signal.exitRule}
-          </div>
-        )}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {timeframes.map((tf) => (
-          <button
-            key={tf.label}
-            onClick={() => setTimeframe(tf)}
-            className={`px-3 py-1 rounded-lg border text-sm ${
-              timeframe.label === tf.label
-                ? "bg-cyan-500/20 border-cyan-400 text-cyan-200"
-                : "bg-slate-900 border-slate-700 text-slate-400"
-            }`}
-          >
-            {tf.label}
-          </button>
-        ))}
-      </div>
-
-      <div ref={chartRef} className="w-full" />
-    </div>
+async function fetchCandles(): Promise<Candle[]> {
+  const res = await fetch(
+    "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=300"
   );
-}
-
-async function getCandlesByTimeframe(minutes: number) {
-  if ([1, 5, 15, 60, 1440].includes(minutes)) {
-    return fetchCoinbaseCandles(minutesToGranularity(minutes));
-  }
-
-  if (minutes === 43200) {
-    const daily = await fetchCoinbaseCandles(86400);
-    return aggregateCandles(daily, 30);
-  }
-
-  const base = await fetchCoinbaseCandles(60);
-  return aggregateCandles(base, minutes);
-}
-
-function minutesToGranularity(minutes: number) {
-  if (minutes === 1) return 60;
-  if (minutes === 5) return 300;
-  if (minutes === 15) return 900;
-  if (minutes === 60) return 3600;
-  if (minutes === 1440) return 86400;
-  return 60;
-}
-
-async function fetchCoinbaseCandles(granularity: number) {
-  const now = Math.floor(Date.now() / 1000);
-  const secondsNeeded = granularity * 300;
-  const start = now - secondsNeeded;
-
-  const url =
-    `https://api.exchange.coinbase.com/products/BTC-USD/candles` +
-    `?granularity=${granularity}` +
-    `&start=${new Date(start * 1000).toISOString()}` +
-    `&end=${new Date(now * 1000).toISOString()}`;
-
-  const res = await fetch(url);
   const raw = await res.json();
 
   return raw
-    .map((item: number[]) => ({
-      time: item[0],
-      low: item[1],
-      high: item[2],
-      open: item[3],
-      close: item[4],
+    .map((c: number[]) => ({
+      time: c[0],
+      low: c[1],
+      high: c[2],
+      open: c[3],
+      close: c[4],
     }))
-    .sort((a: Candle, b: Candle) => a.time - b.time);
-}
-
-function aggregateCandles(data: Candle[], groupSize: number) {
-  const result: Candle[] = [];
-
-  for (let i = 0; i < data.length; i += groupSize) {
-    const group = data.slice(i, i + groupSize);
-    if (group.length < groupSize) continue;
-
-    result.push({
-      time: group[0].time,
-      open: group[0].open,
-      high: Math.max(...group.map((c) => c.high)),
-      low: Math.min(...group.map((c) => c.low)),
-      close: group[group.length - 1].close,
-    });
-  }
-
-  return result;
+    .reverse();
 }
 
 function calculateEMA(data: Candle[], period: number) {
-  const multiplier = 2 / (period + 1);
-  let prevEma = data[0]?.close ?? 0;
+  const k = 2 / (period + 1);
+  let ema = data[0].close;
 
-  return data.map((candle, index) => {
-    const value =
-      index === 0
-        ? candle.close
-        : (candle.close - prevEma) * multiplier + prevEma;
-
-    prevEma = value;
-
-    return {
-      time: candle.time,
-      value,
-    };
+  return data.map((candle) => {
+    ema = candle.close * k + ema * (1 - k);
+    return { time: candle.time, value: ema };
   });
-}
-
-function calculateBollinger(data: Candle[], period: number, multiplier: number) {
-  const upper: { time: number; value: number }[] = [];
-  const middle: { time: number; value: number }[] = [];
-  const lower: { time: number; value: number }[] = [];
-
-  data.forEach((candle, index) => {
-    if (index < period - 1) return;
-
-    const slice = data.slice(index - period + 1, index + 1);
-    const avg = slice.reduce((sum, item) => sum + item.close, 0) / period;
-
-    const variance =
-      slice.reduce((sum, item) => sum + Math.pow(item.close - avg, 2), 0) /
-      period;
-
-    const stdDev = Math.sqrt(variance);
-
-    middle.push({ time: candle.time, value: avg });
-    upper.push({ time: candle.time, value: avg + stdDev * multiplier });
-    lower.push({ time: candle.time, value: avg - stdDev * multiplier });
-  });
-
-  return { upper, middle, lower };
-}
-
-function calculateParabolicSAR(data: Candle[]) {
-  if (data.length < 2) return [];
-
-  let isUptrend = true;
-  let af = 0.02;
-  const maxAf = 0.2;
-
-  let ep = data[0].high;
-  let sar = data[0].low;
-
-  const result: { time: number; value: number; trend: "up" | "down" }[] = [];
-
-  for (let i = 1; i < data.length; i++) {
-    const current = data[i];
-
-    sar = sar + af * (ep - sar);
-
-    if (isUptrend) {
-      if (current.low < sar) {
-        isUptrend = false;
-        sar = ep;
-        ep = current.low;
-        af = 0.02;
-      } else if (current.high > ep) {
-        ep = current.high;
-        af = Math.min(af + 0.02, maxAf);
-      }
-    } else {
-      if (current.high > sar) {
-        isUptrend = true;
-        sar = ep;
-        ep = current.high;
-        af = 0.02;
-      } else if (current.low < ep) {
-        ep = current.low;
-        af = Math.min(af + 0.02, maxAf);
-      }
-    }
-
-    result.push({
-      time: current.time,
-      value: sar,
-      trend: isUptrend ? "up" : "down",
-    });
-  }
-
-  return result;
 }
 
 function calculateSignal(
   data: Candle[],
-  ema3: { time: number; value: number }[],
-  ema9: { time: number; value: number }[],
-  ema20: { time: number; value: number }[],
-  sar: { time: number; value: number; trend: "up" | "down" }[]
-): Signal {
-  if (data.length < 30 || sar.length < 5) {
-    return {
-      type: "SIN SEÑAL",
-      message: "Datos insuficientes para confirmar cruce.",
-      candleCount: 0,
-    };
+  ema3: any[],
+  ema9: any[],
+  ema20: any[]
+) {
+  const i = data.length - 1;
+
+  const prevFast = ema3[i - 1].value;
+  const prevSlow = ema9[i - 1].value;
+  const currFast = ema3[i].value;
+  const currSlow = ema9[i].value;
+  const price = data[i].close;
+  const ema20v = ema20[i].value;
+
+  if (prevFast <= prevSlow && currFast > currSlow && price > ema20v) {
+    return { type: "LONG", candleCount: 1 };
   }
 
-  for (let i = data.length - 1; i >= Math.max(data.length - 4, 1); i--) {
-    const prevFast = ema3[i - 1].value;
-    const prevSlow = ema9[i - 1].value;
-    const currFast = ema3[i].value;
-    const currSlow = ema9[i].value;
-    const currClose = data[i].close;
-    const currEma20 = ema20[i].value;
-    const sarPoint = sar.find((s) => s.time === data[i].time);
-
-    if (!sarPoint) continue;
-
-    const bullishCross = prevFast <= prevSlow && currFast > currSlow;
-    const bearishCross = prevFast >= prevSlow && currFast < currSlow;
-
-    const candleCount = data.length - i;
-
-    if (
-      bullishCross &&
-      currClose > currEma20 &&
-      sarPoint.trend === "up" &&
-      candleCount <= 3
-    ) {
-      return {
-        type: "LONG",
-        message: "Cruce EMA 3/9 alcista confirmado con cierre sobre EMA 20 y SAR positivo.",
-        candleCount,
-        entryPrice: currClose,
-        exitRule: "Evaluar salida máximo en la vela 3.",
-      };
-    }
-
-    if (
-      bearishCross &&
-      currClose < currEma20 &&
-      sarPoint.trend === "down" &&
-      candleCount <= 3
-    ) {
-      return {
-        type: "SHORT",
-        message: "Cruce EMA 3/9 bajista confirmado con cierre bajo EMA 20 y SAR negativo.",
-        candleCount,
-        entryPrice: currClose,
-        exitRule: "Evaluar salida máximo en la vela 3.",
-      };
-    }
+  if (prevFast >= prevSlow && currFast < currSlow && price < ema20v) {
+    return { type: "SHORT", candleCount: 1 };
   }
 
-  return {
-    type: "SIN SEÑAL",
-    message: "No hay cruce EMA 3/9 confirmado dentro de las últimas 3 velas.",
-    candleCount: 0,
-  };
+  return { type: "SIN SEÑAL", candleCount: 0 };
 }
