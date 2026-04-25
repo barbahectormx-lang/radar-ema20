@@ -14,14 +14,8 @@ function cleanText(text: string) {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const asset = searchParams.get("asset") || "BTCUSD";
-
-    const query =
-      asset === "NVDA"
-        ? "NVDA NVIDIA stock artificial intelligence semiconductor earnings"
-        : asset === "BTCUSDT"
-        ? "BTCUSDT Bitcoin crypto market Binance"
-        : "BTCUSD Bitcoin crypto market Federal Reserve dollar";
+    const symbol = searchParams.get("symbol") || "BTC";
+    const query = `${symbol} crypto market news price analysis`;
 
     const url = `https://news.google.com/rss/search?q=${encodeURIComponent(
       query
@@ -31,7 +25,7 @@ export async function GET(req: Request) {
     const xml = await res.text();
 
     const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)]
-      .slice(0, 10)
+      .slice(0, 8)
       .map((match) => {
         const item = match[1];
 
@@ -48,11 +42,8 @@ export async function GET(req: Request) {
         };
       });
 
-    return NextResponse.json({ asset, query, items });
+    return NextResponse.json({ query, items });
   } catch {
-    return NextResponse.json(
-      { error: "No se pudieron cargar noticias.", items: [] },
-      { status: 500 }
-    );
+    return NextResponse.json({ items: [] }, { status: 500 });
   }
 }
