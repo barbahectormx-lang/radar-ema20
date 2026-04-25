@@ -62,6 +62,7 @@ export default function ChartPro({
   const chartRef = useRef<HTMLDivElement | null>(null);
   const macdRef = useRef<HTMLDivElement | null>(null);
   const [tf, setTf] = useState("3m");
+  const [status, setStatus] = useState("Cargando datos...");
 
   useEffect(() => {
     if (!chartRef.current || !macdRef.current) return;
@@ -72,6 +73,7 @@ export default function ChartPro({
 
     chartRef.current.innerHTML = "";
     macdRef.current.innerHTML = "";
+    setStatus("Cargando datos...");
 
     const chart = createChart(chartRef.current, {
       width: chartRef.current.clientWidth,
@@ -131,24 +133,45 @@ export default function ChartPro({
       priceScaleId: "",
     } as any);
 
-    const ema3Series = chart.addSeries(LineSeries, { color: "#16a34a", lineWidth: 2 });
-    const ema9Series = chart.addSeries(LineSeries, { color: "#ef4444", lineWidth: 2 });
+    const ema3Series = chart.addSeries(LineSeries, {
+      color: "#16a34a",
+      lineWidth: 2,
+    });
+    const ema9Series = chart.addSeries(LineSeries, {
+      color: "#ef4444",
+      lineWidth: 2,
+    });
     const ema20Series = chart.addSeries(LineSeries, {
       color: "#22c55e",
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
     });
-    const ema50Series = chart.addSeries(LineSeries, { color: "#dc2626", lineWidth: 4 });
-    const ema50BlackSeries = chart.addSeries(LineSeries, { color: "#000000", lineWidth: 2 });
-    const ema200Series = chart.addSeries(LineSeries, { color: "#facc15", lineWidth: 4 });
-    const ema200GreenSeries = chart.addSeries(LineSeries, { color: "#16a34a", lineWidth: 2 });
+    const ema50Series = chart.addSeries(LineSeries, {
+      color: "#dc2626",
+      lineWidth: 4,
+    });
+    const ema50BlackSeries = chart.addSeries(LineSeries, {
+      color: "#000000",
+      lineWidth: 2,
+    });
+    const ema200Series = chart.addSeries(LineSeries, {
+      color: "#facc15",
+      lineWidth: 4,
+    });
+    const ema200GreenSeries = chart.addSeries(LineSeries, {
+      color: "#16a34a",
+      lineWidth: 2,
+    });
 
     const bbUpperSeries = chart.addSeries(LineSeries, {
       color: "#38bdf8",
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
     });
-    const bbMiddleSeries = chart.addSeries(LineSeries, { color: "#94a3b8", lineWidth: 1 });
+    const bbMiddleSeries = chart.addSeries(LineSeries, {
+      color: "#94a3b8",
+      lineWidth: 1,
+    });
     const bbLowerSeries = chart.addSeries(LineSeries, {
       color: "#38bdf8",
       lineWidth: 1,
@@ -171,8 +194,14 @@ export default function ChartPro({
       pointMarkersRadius: 4,
     } as any);
 
-    const macdLine = macdChart.addSeries(LineSeries, { color: "#38bdf8", lineWidth: 2 });
-    const macdSignal = macdChart.addSeries(LineSeries, { color: "#f97316", lineWidth: 2 });
+    const macdLine = macdChart.addSeries(LineSeries, {
+      color: "#38bdf8",
+      lineWidth: 2,
+    });
+    const macdSignal = macdChart.addSeries(LineSeries, {
+      color: "#f97316",
+      lineWidth: 2,
+    });
     const macdHist = macdChart.addSeries(HistogramSeries);
 
     function render(data: Candle[]) {
@@ -191,7 +220,16 @@ export default function ChartPro({
       const bb = bollinger(candlesData, 20);
       const sarData = parabolicSAR(candlesData);
       const macd = calculateMACD(candlesData);
-      const engine = analyzeEngine(candlesData, ema3, ema9, ema20, ema200, bb, sarData, macd);
+      const engine = analyzeEngine(
+        candlesData,
+        ema3,
+        ema9,
+        ema20,
+        ema200,
+        bb,
+        sarData,
+        macd
+      );
 
       onSignal?.(engine);
 
@@ -233,10 +271,16 @@ export default function ChartPro({
         from: Math.max(candlesData.length - 20, 0),
         to: candlesData.length,
       });
+
+      setStatus(`${source.toUpperCase()} · ${symbol} · ${tf}`);
     }
 
     async function loadBase() {
       const data = await fetchCandles(source, symbol, tf);
+      if (!data.length) {
+        setStatus(`Sin datos para ${symbol} en ${source}. Prueba otra fuente.`);
+        return;
+      }
       render(data);
     }
 
@@ -323,20 +367,24 @@ export default function ChartPro({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {timeframes.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setTf(t.value)}
-            className={`px-3 py-1 rounded-full border text-sm transition ${
-              tf === t.value
-                ? "bg-white text-black border-white"
-                : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {timeframes.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => setTf(t.value)}
+              className={`px-3 py-1 rounded-full border text-sm transition ${
+                tf === t.value
+                  ? "bg-white text-black border-white"
+                  : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="text-xs text-slate-500">{status}</div>
       </div>
 
       <div ref={chartRef} className="w-full overflow-hidden rounded-3xl" />
@@ -345,14 +393,20 @@ export default function ChartPro({
   );
 }
 
-async function fetchCandles(source: DataSource, symbol: string, tf: string): Promise<Candle[]> {
+async function fetchCandles(
+  source: DataSource,
+  symbol: string,
+  tf: string
+): Promise<Candle[]> {
   if (source === "binance") return fetchBinance(symbol, tf);
   if (source === "coinbase") return fetchCoinbase(symbol, tf);
   return fetchKraken(symbol, tf);
 }
 
 async function fetchBinance(symbol: string, tf: string): Promise<Candle[]> {
-  const interval = ["1m", "3m", "5m", "15m", "1h", "1d"].includes(tf) ? tf : "5m";
+  const interval = ["1m", "3m", "5m", "15m", "1h", "1d"].includes(tf)
+    ? tf
+    : "5m";
 
   const res = await fetch(
     `https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=${interval}&limit=300`
@@ -386,7 +440,6 @@ async function fetchCoinbase(symbol: string, tf: string): Promise<Candle[]> {
 
   const now = Math.floor(Date.now() / 1000);
   const start = now - granularity * 300;
-
   const product = `${symbol}-USD`;
 
   const res = await fetch(
@@ -423,13 +476,27 @@ async function fetchKraken(symbol: string, tf: string): Promise<Candle[]> {
     XRP: "XXRPZUSD",
     ADA: "ADAUSD",
     DOGE: "XDGUSD",
+    AVAX: "AVAXUSD",
+    LINK: "LINKUSD",
   };
 
   const interval =
-    tf === "1m" ? 1 : tf === "3m" ? 1 : tf === "5m" ? 5 : tf === "15m" ? 15 : tf === "1h" ? 60 : 1440;
+    tf === "1m"
+      ? 1
+      : tf === "3m"
+      ? 1
+      : tf === "5m"
+      ? 5
+      : tf === "15m"
+      ? 15
+      : tf === "1h"
+      ? 60
+      : 1440;
 
   const pair = pairMap[symbol] || "XXBTZUSD";
-  const res = await fetch(`https://api.kraken.com/0/public/OHLC?pair=${pair}&interval=${interval}`);
+  const res = await fetch(
+    `https://api.kraken.com/0/public/OHLC?pair=${pair}&interval=${interval}`
+  );
   const raw = await res.json();
 
   const key = Object.keys(raw.result || {}).find((k) => k !== "last");
@@ -701,7 +768,9 @@ function analyzeEngine(
   return {
     price: last.close,
     signal: "NO_OPERAR",
-    reason: isRange ? "NO OPERAR: rango lateral." : "ESPERAR: faltan confirmaciones.",
+    reason: isRange
+      ? "NO OPERAR: rango lateral."
+      : "ESPERAR: faltan confirmaciones.",
     ema20: priceAbove20 || priceBelow20,
     emaCross: bullishCross || bearishCross,
     ema200: priceAbove200,
