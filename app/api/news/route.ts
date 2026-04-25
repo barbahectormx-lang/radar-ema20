@@ -35,23 +35,17 @@ export async function GET(req: Request) {
       .map((match) => {
         const item = match[1];
 
-        const title = cleanText(
-          item.match(/<title>([\s\S]*?)<\/title>/)?.[1] || ""
-        );
-
-        const link = cleanText(
-          item.match(/<link>([\s\S]*?)<\/link>/)?.[1] || ""
-        );
-
-        const pubDate = cleanText(
-          item.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || ""
-        );
-
-        const source = cleanText(
-          item.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1] || "Google News"
-        );
-
-        return { title, link, pubDate, source };
+        return {
+          title: cleanText(item.match(/<title>([\s\S]*?)<\/title>/)?.[1] || ""),
+          link: cleanText(item.match(/<link>([\s\S]*?)<\/link>/)?.[1] || ""),
+          pubDate: cleanText(
+            item.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || ""
+          ),
+          source: cleanText(
+            item.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1] ||
+              "Google News"
+          ),
+        };
       });
 
     return NextResponse.json({ asset, query, items });

@@ -18,6 +18,7 @@ export default function Home() {
   const [asset, setAsset] = useState<Asset>("BTCUSD");
   const [direction, setDirection] = useState<Direction>("LONG");
   const [mode, setMode] = useState<Mode>("INTELIGENTE");
+  const [liveMode, setLiveMode] = useState(false);
 
   const [capital, setCapital] = useState(1000);
   const [risk, setRisk] = useState(1);
@@ -28,10 +29,8 @@ export default function Home() {
 
   const [context, setContext] = useState("Neutral");
   const [timeframe, setTimeframe] = useState("3M");
-
   const [anomalyStart, setAnomalyStart] = useState(66800);
   const [anomalyTarget, setAnomalyTarget] = useState(67600);
-
   const [candleStep, setCandleStep] = useState("Vela 1: entrada");
 
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -57,9 +56,7 @@ export default function Home() {
     async function loadNews() {
       try {
         setNewsStatus("Cargando noticias...");
-        const res = await fetch(`/api/news?asset=${asset}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(`/api/news?asset=${asset}`, { cache: "no-store" });
         const data = await res.json();
         setNews(data.items || []);
         setNewsStatus("");
@@ -76,10 +73,7 @@ export default function Home() {
 
   function handleSignal(signal: EngineSignal) {
     setEngine(signal);
-
-    if (signal.price > 0) {
-      setClosePrice(signal.price);
-    }
+    if (signal.price > 0) setClosePrice(signal.price);
 
     if (signal.signal === "LONG") {
       setDirection("LONG");
@@ -154,8 +148,7 @@ export default function Home() {
       ? (closePrice - entry) * quantity
       : (entry - closePrice) * quantity;
 
-  const target1 =
-    direction === "LONG" ? entry + riskPerUnit : entry - riskPerUnit;
+  const target1 = direction === "LONG" ? entry + riskPerUnit : entry - riskPerUnit;
   const target2 =
     direction === "LONG" ? entry + riskPerUnit * 2 : entry - riskPerUnit * 2;
   const target3 =
@@ -164,6 +157,7 @@ export default function Home() {
   const message = `🚨 ${asset} — Setup educativo
 
 Modo: ${mode}
+Tiempo real: ${liveMode ? "ACTIVO" : "NORMAL"}
 Activo: ${asset}
 Temporalidad: ${timeframe}
 Dirección: ${direction}
@@ -218,7 +212,7 @@ Destino: ${anomalyTarget}
           <div>
             <h1 className="text-3xl font-black">Sistema 3 Velas Pro</h1>
             <p className="text-slate-400 mt-1">
-              Motor automático real + gráfica propia + noticias + calculadora + WhatsApp / Telegram
+              Motor automático + modo tiempo real + gráfica propia + noticias + WhatsApp / Telegram
             </p>
           </div>
 
@@ -256,6 +250,32 @@ Destino: ${anomalyTarget}
           ))}
         </section>
 
+        <Card title="Modo de actualización">
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => setLiveMode(false)}
+              className={`px-4 py-2 rounded-lg border ${
+                !liveMode
+                  ? "bg-slate-700 border-slate-500"
+                  : "bg-slate-950 border-slate-700"
+              }`}
+            >
+              Normal
+            </button>
+
+            <button
+              onClick={() => setLiveMode(true)}
+              className={`px-4 py-2 rounded-lg border ${
+                liveMode
+                  ? "bg-red-500/20 border-red-400 text-red-300"
+                  : "bg-slate-950 border-slate-700"
+              }`}
+            >
+              🔴 Tiempo Real
+            </button>
+          </div>
+        </Card>
+
         <Card title="Motor automático">
           <div
             className={`rounded-xl border p-5 ${
@@ -277,30 +297,30 @@ Destino: ${anomalyTarget}
             </div>
           </div>
 
-          <div className="mt-4">
-            <div className="text-sm text-slate-400 mb-2">Modo de señal</div>
-            <div className="flex flex-wrap gap-2">
-              {(["CONSERVADOR", "AGRESIVO", "INTELIGENTE"] as Mode[]).map(
-                (item) => (
-                  <button
-                    key={item}
-                    onClick={() => setMode(item)}
-                    className={`px-4 py-2 rounded-lg border ${
-                      mode === item
-                        ? "bg-cyan-500/20 border-cyan-400 text-cyan-200"
-                        : "bg-slate-950 border-slate-700 text-slate-300"
-                    }`}
-                  >
-                    {item}
-                  </button>
-                )
-              )}
-            </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {(["CONSERVADOR", "AGRESIVO", "INTELIGENTE"] as Mode[]).map((item) => (
+              <button
+                key={item}
+                onClick={() => setMode(item)}
+                className={`px-4 py-2 rounded-lg border ${
+                  mode === item
+                    ? "bg-cyan-500/20 border-cyan-400 text-cyan-200"
+                    : "bg-slate-950 border-slate-700 text-slate-300"
+                }`}
+              >
+                {item}
+              </button>
+            ))}
           </div>
         </Card>
 
         <Card title="Gráfica propia — 20 velas exactas">
-          <ChartPro asset={asset} onPrice={setClosePrice} onSignal={handleSignal} />
+          <ChartPro
+            asset={asset}
+            live={liveMode}
+            onPrice={setClosePrice}
+            onSignal={handleSignal}
+          />
         </Card>
 
         <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -342,7 +362,6 @@ Destino: ${anomalyTarget}
             <Input label="Capital" value={capital} set={setCapital} />
             <Input label="Riesgo %" value={risk} set={setRisk} />
             <Input label="Temporalidad" value={timeframe} set={setTimeframe} text />
-
             <Row label="Riesgo en dinero" value={`$${riskMoney.toFixed(2)}`} />
             <Row label="Riesgo por unidad" value={`$${riskPerUnit.toFixed(2)}`} />
             <Row
@@ -431,10 +450,6 @@ Destino: ${anomalyTarget}
               value={anomalyTarget}
               set={setAnomalyTarget}
             />
-            <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-4 text-sm">
-              El arco ayuda a ubicar si el precio va de una anomalía a otra y si
-              está regresando al nivel esperado.
-            </div>
           </Card>
         </section>
 

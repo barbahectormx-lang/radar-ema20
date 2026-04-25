@@ -51,10 +51,12 @@ const timeframes = [
 
 export default function ChartPro({
   asset,
+  live,
   onPrice,
   onSignal,
 }: {
   asset: Asset;
+  live: boolean;
   onPrice?: (price: number) => void;
   onSignal?: (signal: EngineSignal) => void;
 }) {
@@ -66,6 +68,8 @@ export default function ChartPro({
     if (!chartRef.current || !macdRef.current) return;
 
     let disposed = false;
+    let currentData: Candle[] = [];
+    let ws: WebSocket | null = null;
 
     chartRef.current.innerHTML = "";
     macdRef.current.innerHTML = "";
@@ -74,7 +78,8 @@ export default function ChartPro({
       onSignal?.({
         price: 0,
         signal: "NO_OPERAR",
-        reason: "NVDA requiere API de acciones para motor automático propio.",
+        reason:
+          "NVDA requiere API de acciones para gráfica propia. Usa noticias y calculadora manual.",
         ema20: false,
         emaCross: false,
         ema200: false,
@@ -96,7 +101,7 @@ export default function ChartPro({
         background: { type: ColorType.Solid, color: "#020617" },
         textColor: "#ffffff",
         attributionLogo: false,
-      },
+      } as any,
       grid: {
         vertLines: { color: "#1e293b" },
         horzLines: { color: "#1e293b" },
@@ -114,7 +119,7 @@ export default function ChartPro({
         background: { type: ColorType.Solid, color: "#020617" },
         textColor: "#ffffff",
         attributionLogo: false,
-      },
+      } as any,
       grid: {
         vertLines: { color: "#1e293b" },
         horzLines: { color: "#1e293b" },
@@ -126,43 +131,24 @@ export default function ChartPro({
     });
 
     const candles = chart.addSeries(CandlestickSeries);
-
     const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "",
     } as any);
 
-    const ema3Series = chart.addSeries(LineSeries, {
-      color: "#166534",
-      lineWidth: 2,
-    });
-
-    const ema9Series = chart.addSeries(LineSeries, {
-      color: "#ef4444",
-      lineWidth: 2,
-    });
-
+    const ema3Series = chart.addSeries(LineSeries, { color: "#166534", lineWidth: 2 });
+    const ema9Series = chart.addSeries(LineSeries, { color: "#ef4444", lineWidth: 2 });
     const ema20Series = chart.addSeries(LineSeries, {
       color: "#166534",
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
     });
-
-    const ema50Series = chart.addSeries(LineSeries, {
-      color: "#ef4444",
-      lineWidth: 4,
-    });
-
+    const ema50Series = chart.addSeries(LineSeries, { color: "#ef4444", lineWidth: 4 });
     const ema50BlackSeries = chart.addSeries(LineSeries, {
       color: "#000000",
       lineWidth: 2,
     });
-
-    const ema200Series = chart.addSeries(LineSeries, {
-      color: "#facc15",
-      lineWidth: 4,
-    });
-
+    const ema200Series = chart.addSeries(LineSeries, { color: "#facc15", lineWidth: 4 });
     const ema200GreenSeries = chart.addSeries(LineSeries, {
       color: "#166534",
       lineWidth: 2,
@@ -173,12 +159,7 @@ export default function ChartPro({
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
     });
-
-    const bbMiddleSeries = chart.addSeries(LineSeries, {
-      color: "#94a3b8",
-      lineWidth: 1,
-    });
-
+    const bbMiddleSeries = chart.addSeries(LineSeries, { color: "#94a3b8", lineWidth: 1 });
     const bbLowerSeries = chart.addSeries(LineSeries, {
       color: "#38bdf8",
       lineWidth: 1,
@@ -201,100 +182,167 @@ export default function ChartPro({
       pointMarkersRadius: 4,
     } as any);
 
-    const macdLine = macdChart.addSeries(LineSeries, {
-      color: "#38bdf8",
-      lineWidth: 2,
-    });
-
-    const macdSignal = macdChart.addSeries(LineSeries, {
-      color: "#f97316",
-      lineWidth: 2,
-    });
-
+    const macdLine = macdChart.addSeries(LineSeries, { color: "#38bdf8", lineWidth: 2 });
+    const macdSignal = macdChart.addSeries(LineSeries, { color: "#f97316", lineWidth: 2 });
     const macdHist = macdChart.addSeries(HistogramSeries);
+
+    function render(data: Candle[]) {
+      if (disposed || !data.length) return;
+
+      currentData = data;
+
+      const last = data[data.length - 1];
+      onPrice?.(last.close);
+
+      const ema3 = ema(data, 3);
+      const ema9 = ema(data, 9);
+      const ema20 = ema(data, 20);
+      const ema50 = ema(data, 50);
+      const ema200 = ema(data, 200);
+      const bb = bollinger(data, 20);
+      const sarData = parabolicSAR(data);
+      const macd = calculateMACD(data);
+      const signal = analyzeEngine(data, ema3, ema9, ema20, ema200, bb, sarData, macd);
+
+      onSignal?.(signal);
+
+      candles.setData(data as any);
+
+      volumeSeries.setData(
+        data.map((c) => ({
+          time: c.time,
+          value: c.volume || 0,
+          color: c.close >= c.open ? "#22c55e55" : "#ef444455",
+        })) as any
+      );
+
+      ema3Series.setData(ema3 as any);
+      ema9Series.setData(ema9 as any);
+      ema20Series.setData(ema20 as any);
+      ema50Series.setData(ema50 as any);
+      ema50BlackSeries.setData(ema50 as any);
+      ema200Series.setData(ema200 as any);
+      ema200GreenSeries.setData(ema200 as any);
+
+      bbUpperSeries.setData(bb.upper as any);
+      bbMiddleSeries.setData(bb.middle as any);
+      bbLowerSeries.setData(bb.lower as any);
+
+      sarGreen.setData(sarData.filter((p) => p.trend === "up") as any);
+      sarRed.setData(sarData.filter((p) => p.trend === "down") as any);
+
+      macdLine.setData(macd.macd as any);
+      macdSignal.setData(macd.signal as any);
+      macdHist.setData(macd.histogram as any);
+
+      chart.timeScale().setVisibleLogicalRange({
+        from: Math.max(data.length - 20, 0),
+        to: data.length,
+      });
+
+      macdChart.timeScale().setVisibleLogicalRange({
+        from: Math.max(data.length - 20, 0),
+        to: data.length,
+      });
+    }
 
     async function load() {
       try {
         const data =
-          asset === "BTCUSDT"
-            ? await fetchBinance(tf)
-            : await fetchCoinbase(tf);
+          asset === "BTCUSDT" ? await fetchBinance(tf) : await fetchCoinbase(tf);
+        render(data);
+      } catch (error) {
+        console.error("Error cargando gráfica:", error);
+      }
+    }
 
-        if (disposed || !data.length) return;
+    function startLive() {
+      if (!live) return;
 
-        const last = data[data.length - 1];
-        onPrice?.(last.close);
+      if (asset === "BTCUSDT") {
+        const streamTf = ["1m", "3m", "5m", "15m", "1h", "1d", "1M"].includes(tf)
+          ? tf
+          : "1m";
 
-        const ema3 = ema(data, 3);
-        const ema9 = ema(data, 9);
-        const ema20 = ema(data, 20);
-        const ema50 = ema(data, 50);
-        const ema200 = ema(data, 200);
-        const bb = bollinger(data, 20);
-        const sarData = parabolicSAR(data);
-        const macd = calculateMACD(data);
-        const signal = analyzeEngine(data, ema3, ema9, ema20, ema200, bb, sarData, macd);
-
-        onSignal?.(signal);
-
-        candles.setData(data as any);
-
-        volumeSeries.setData(
-          data.map((c) => ({
-            time: c.time,
-            value: c.volume || 0,
-            color: c.close >= c.open ? "#22c55e55" : "#ef444455",
-          })) as any
+        ws = new WebSocket(
+          `wss://stream.binance.com:9443/ws/btcusdt@kline_${streamTf}`
         );
 
-        ema3Series.setData(ema3 as any);
-        ema9Series.setData(ema9 as any);
-        ema20Series.setData(ema20 as any);
-        ema50Series.setData(ema50 as any);
-        ema50BlackSeries.setData(ema50 as any);
-        ema200Series.setData(ema200 as any);
-        ema200GreenSeries.setData(ema200 as any);
+        ws.onmessage = (event) => {
+          const json = JSON.parse(event.data);
+          const k = json.k;
 
-        bbUpperSeries.setData(bb.upper as any);
-        bbMiddleSeries.setData(bb.middle as any);
-        bbLowerSeries.setData(bb.lower as any);
+          const newCandle: Candle = {
+            time: Math.floor(k.t / 1000),
+            open: Number(k.o),
+            high: Number(k.h),
+            low: Number(k.l),
+            close: Number(k.c),
+            volume: Number(k.v),
+          };
 
-        sarGreen.setData(sarData.filter((p) => p.trend === "up") as any);
-        sarRed.setData(sarData.filter((p) => p.trend === "down") as any);
+          const next = [...currentData];
+          const lastIndex = next.length - 1;
 
-        macdLine.setData(macd.macd as any);
-        macdSignal.setData(macd.signal as any);
-        macdHist.setData(macd.histogram as any);
+          if (lastIndex >= 0 && next[lastIndex].time === newCandle.time) {
+            next[lastIndex] = newCandle;
+          } else {
+            next.push(newCandle);
+          }
 
-        chart.timeScale().setVisibleLogicalRange({
-          from: Math.max(data.length - 20, 0),
-          to: data.length,
-        });
+          render(next.slice(-300));
+        };
+      }
 
-        macdChart.timeScale().setVisibleLogicalRange({
-          from: Math.max(data.length - 20, 0),
-          to: data.length,
-        });
-      } catch (error) {
-        console.error("Error cargando motor:", error);
+      if (asset === "BTCUSD") {
+        ws = new WebSocket("wss://ws-feed.exchange.coinbase.com");
+
+        ws.onopen = () => {
+          ws?.send(
+            JSON.stringify({
+              type: "subscribe",
+              product_ids: ["BTC-USD"],
+              channels: ["ticker"],
+            })
+          );
+        };
+
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.type !== "ticker" || !data.price || !currentData.length) return;
+
+          const price = Number(data.price);
+          const next = [...currentData];
+          const last = { ...next[next.length - 1] };
+
+          last.close = price;
+          last.high = Math.max(last.high, price);
+          last.low = Math.min(last.low, price);
+
+          next[next.length - 1] = last;
+          render(next);
+        };
       }
     }
 
     load();
-    const interval = setInterval(load, 60000);
+    startLive();
+
+    const interval = setInterval(load, live ? 300000 : 60000);
 
     return () => {
       disposed = true;
       clearInterval(interval);
+      ws?.close();
       chart.remove();
       macdChart.remove();
     };
-  }, [asset, tf]);
+  }, [asset, tf, live]);
 
   if (asset === "NVDA") {
     return (
       <div className="bg-black border border-slate-700 rounded-xl p-6 text-slate-300">
-        NVDA requiere API de acciones para gráfica propia. Por ahora usa calculadora y noticias.
+        NVDA requiere API de acciones para gráfica propia. Puedes usar la calculadora, noticias y contexto manual.
       </div>
     );
   }
@@ -533,7 +581,6 @@ function analyzeEngine(
 ): EngineSignal {
   const i = data.length - 1;
   const prev = i - 1;
-
   const last = data[i];
 
   const bullishCross =
@@ -560,7 +607,8 @@ function analyzeEngine(
 
   const last20 = data.slice(-20);
   const avgVolume =
-    last20.reduce((sum, c) => sum + (c.volume || 0), 0) / Math.max(last20.length, 1);
+    last20.reduce((sum, c) => sum + (c.volume || 0), 0) /
+    Math.max(last20.length, 1);
 
   const volumeStrong = (last.volume || 0) > avgVolume;
 
@@ -604,7 +652,8 @@ function analyzeEngine(
     return {
       price: last.close,
       signal: "LONG",
-      reason: "LONG: EMA20/EMA200 a favor, cruce o momentum alcista, SAR/MACD/volumen acompañan.",
+      reason:
+        "LONG: EMA20/EMA200 a favor, cruce o momentum alcista, SAR/MACD/volumen acompañan.",
       ema20: priceAbove20,
       emaCross: bullishCross,
       ema200: priceAbove200,
@@ -622,7 +671,8 @@ function analyzeEngine(
     return {
       price: last.close,
       signal: "SHORT",
-      reason: "SHORT: precio bajo EMA20, presión bajista, SAR/MACD/volumen acompañan.",
+      reason:
+        "SHORT: precio bajo EMA20, presión bajista, SAR/MACD/volumen acompañan.",
       ema20: priceBelow20,
       emaCross: bearishCross,
       ema200: priceAbove200,
